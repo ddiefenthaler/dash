@@ -5,6 +5,7 @@
 #include "HDF5MatrixTest.h"
 
 #include <libdash.h>
+#include <dash/tools/PatternVisualizer.h>
 #include <gtest/gtest.h>
 #include <limits.h>
 
@@ -80,6 +81,30 @@ void verify_matrix(dash::Matrix<T, ndim, IndexT, PatternT> & matrix,
     f);
 }
 
+template<typename PatternT>
+void print_pattern(
+  PatternT    pat,
+  std::string fname,
+  std::string title)
+{
+  if(dash::myid() == 0) {
+    typedef typename PatternT::index_type index_t;
+
+    dash::tools::PatternVisualizer<decltype(pat)> pv(pat);
+    pv.set_title(title);
+
+    std::ofstream out(fname);
+    std::string fname_b = fname;
+    fname_b.insert(std::find(fname_b.rbegin(),fname_b.rend(),'.').base()-1, {'_','b','l','o','c','k','e','d'});
+    std::ofstream out_b(fname_b);
+
+    pv.draw_pattern(out,  false);
+    pv.draw_pattern(out_b, true);
+    out.close();
+    out_b.close();
+  }
+}
+
 
 TEST_F(HDF5MatrixTest, StoreMultiDimMatrix)
 {
@@ -110,6 +135,10 @@ TEST_F(HDF5MatrixTest, StoreMultiDimMatrix)
     team_spec);
 
   DASH_LOG_DEBUG("Pattern", pattern);
+
+  print_pattern(pattern,
+                "pat_HDF5MatrixTest.StoreMultiDimMatrix.svg",
+                "HDF5MatrixTest.StoreMultiDimMatrix");
 
   int myid = dash::myid();
   {
@@ -159,6 +188,10 @@ TEST_F(HDF5MatrixTest, StoreSUMMAMatrix)
                  >(size_spec,
                    team_spec);
   DASH_LOG_DEBUG("Pattern", pattern);
+  print_pattern(pattern,
+                "pat_HDF5MatrixTest.StoreSUMMAMatrix.svg",
+                "HDF5MatrixTest.StoreSUMMAMatrix");
+
 
   typedef double                         value_t;
   typedef decltype(pattern)              pattern_t;
@@ -206,6 +239,10 @@ TEST_F(HDF5MatrixTest, AutoGeneratePattern)
                       dash::SizeSpec<2>(
                         dash::size(),
                         dash::size()));
+    print_pattern(matrix_a.pattern(),
+                  "pat_HDF5MatrixTest.AutoGeneratePattern.svg",
+                  "HDF5MatrixTest.AutoGeneratePattern");
+
     // Fill
     fill_matrix(matrix_a);
     dash::barrier();
@@ -295,6 +332,10 @@ TEST_F(HDF5MatrixTest, UnderfilledPattern)
       dash::TILE(block_size_y)),
     teamspec_2d,
     dash::Team::All());
+
+  print_pattern(pattern,
+                "pat_HDF5MatrixTest.UnderfilledPattern.svg",
+                "HDF5MatrixTest.UnderfilledPattern");
 
   {
     dash::Matrix<int, 2, index_t, pattern_t> matrix_a;
