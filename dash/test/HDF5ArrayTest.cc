@@ -6,6 +6,9 @@
 #include <gtest/gtest.h>
 #include <unistd.h>
 
+// #include <c++/5/chrono>
+#include <chrono>
+
 #include "HDF5ArrayTest.h"
 #include "TestBase.h"
 #include "TestLogHelpers.h"
@@ -78,7 +81,11 @@ TEST_F(HDF5ArrayTest, StoreLargeDashArray)
 {
   // Pattern for arr2 array
   size_t nunits           = dash::Team::All().size();
+#ifdef DASH_DEBUG
+  size_t tilesize         = 4;
+#else
   size_t tilesize         = 512 * 512;
+#endif
   size_t blocks_per_unit  = 4; //32;
   size_t size             = nunits * tilesize * blocks_per_unit;
   long   mbsize_total     = (size * sizeof(value_t)) / (tilesize);
@@ -125,7 +132,7 @@ TEST_F(HDF5ArrayTest, AutoGeneratePattern)
     dash::barrier();
 
     // Set option
-    auto fopts = StoreHDF::get_default_options();
+    auto fopts = StoreHDF::hdf5_options();
     fopts.store_pattern = false;
 
     StoreHDF::write(array_a, _filename, _dataset, fopts);
@@ -152,7 +159,7 @@ TEST_F(HDF5ArrayTest, PreAllocation)
     dash::barrier();
 
     // Set option
-    auto fopts = StoreHDF::get_default_options();
+    auto fopts = StoreHDF::hdf5_options();
     fopts.store_pattern = false;
 
     StoreHDF::write(array_a, _filename, _dataset, fopts);
@@ -202,7 +209,7 @@ TEST_F(HDF5ArrayTest, UnderfilledPattern)
     DASH_LOG_TRACE("HDF5ArrayTest.UnderfilledPattern", "barrier #1");
     dash::barrier();
     // Set option
-    auto fopts = StoreHDF::get_default_options();
+    auto fopts = StoreHDF::hdf5_options();
     // Important as recreation should create equal pattern
     fopts.store_pattern = true;
 
@@ -242,7 +249,7 @@ TEST_F(HDF5ArrayTest, UnderfilledPatPreAllocate)
     fill_array(array_a);
     dash::barrier();
     // Set option
-    auto fopts = StoreHDF::get_default_options();
+    auto fopts = StoreHDF::hdf5_options();
     fopts.store_pattern = false;
 
     StoreHDF::write(array_a, _filename, _dataset, fopts);
@@ -277,7 +284,7 @@ TEST_F(HDF5ArrayTest, MultipleDatasets)
     dash::barrier();
 
     // Set option
-    auto fopts = StoreHDF::get_default_options();
+    StoreHDF::hdf5_options fopts;
     fopts.overwrite_file = false;
 
     StoreHDF::write(array_a, _filename, _dataset, fopts);
@@ -311,7 +318,7 @@ TEST_F(HDF5ArrayTest, ModifyDataset)
     dash::barrier();
 
     // Set option
-    auto fopts = StoreHDF::get_default_options();
+    auto fopts = StoreHDF::hdf5_options();
     fopts.overwrite_file = false;
 
     StoreHDF::write(array_a, _filename, _dataset, fopts);
@@ -412,9 +419,115 @@ TEST_F(HDF5ArrayTest, GroupTest)
   verify_array(array_c, secret[2]);
 }
 
+TEST_F(HDF5ArrayTest, CustomType)
+{
+  int    ext_x    = dash::size() * 5;
+  
+  struct value_t { double a; int b; };
+  
+  value_t fillin;
+  fillin.a = 1.0;
+  fillin.b = 2;
+  
+  auto converter = [](){
+    hid_t h5tid = H5Tcreate (H5T_COMPOUND, sizeof(value_t));
+    H5Tinsert(h5tid, "a_name", HOFFSET(value_t, a), H5T_NATIVE_DOUBLE);
+    H5Tinsert(h5tid, "b_name", HOFFSET(value_t, b), H5T_NATIVE_INT);
+    return h5tid;
+  };
+  
+  {
+    dash::Array<value_t> array_a(ext_x);
+  
+    // Fill
+    dash::fill(array_a.begin(), array_a.end(), fillin);
+    dash::barrier();
+  
+    OutputStream os(_filename);
+    os << dio::dataset("array_a")
+       << dio::type_converter(converter)
+       << array_a;
+  
+    dash::barrier();
+  }
+  
+  dash::Array<value_t> array_b(ext_x);
+  InputStream is(_filename);
+  is >> dio::dataset("array_a")
+     >> dio::type_converter(converter)
+     >> array_b;
+  dash::barrier();
+  
+  std::for_each(array_b.lbegin(), array_b.lend(), [&fillin](value_t & el){
+    ASSERT_EQ_U(fillin.a, el.a);
+    ASSERT_EQ_U(fillin.b, el.b);
+  });
+}
+
+/** TODO currently highly experimental */
+TEST_F(HDF5ArrayTest, AsyncIO)
+{
+  int  ext_x  = dash::size() * 1;
+#ifndef DASH_DEBUG
+  long lext_x = 1024*1024*10; // approx. 40 MB
+#else
+  long lext_x = ext_x*2;
+#endif
+  double secret[] = {10, 11, 12};
+  {
+    dash::Array<double> array_a(ext_x);
+    dash::Array<double> array_b(lext_x);
+    dash::Array<double> array_c(ext_x);
+
+    // Fill
+    fill_array(array_a, secret[0]);
+    fill_array(array_b, secret[1]);
+    fill_array(array_c, secret[2]);
+    dash::barrier();
+
+
+    // Currently only works if just one container is passed
+    OutputStream os(dash::launch::async, _filename);
+    os << dio::dataset("array_a")
+      << array_a
+      << dio::dataset("g1/array_b")
+      << array_b
+      << dio::dataset("g1/g2/array_c")
+      << array_c;
+    
+    LOG_MESSAGE("Async OS setup");
+    // Do some computation intense work
+    os.flush();
+    LOG_MESSAGE("Async OS flushed");
+  }
+  
+  dash::Array<double> array_a(ext_x);
+  dash::Array<double> array_b(lext_x);
+  // try unallocated array
+  dash::Array<double> array_c;
+
+  // There are still progress problems in async input stream.
+  InputStream is(dash::launch::async, _filename);
+  is >> dio::dataset("array_a")
+    >> array_a
+    >> dio::dataset("g1/array_b")
+    >> array_b
+    >> dio::dataset("g1/g2/array_c")
+    >> array_c;
+  
+  is.flush();
+
+  // Verify data
+  verify_array(array_a, secret[0]);
+  verify_array(array_b, secret[1]);
+  verify_array(array_c, secret[2]);
+
+}
+
+// Run this test after all other tests as it changes the team state
 TEST_F(HDF5ArrayTest, TeamSplit)
 {
-  // TODO: Fix
+  // TODO Hangs on travis CI
   SKIP_TEST();
 
   if (dash::size() < 2) {

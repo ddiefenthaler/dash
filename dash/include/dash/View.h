@@ -1,7 +1,14 @@
-#ifndef VIEW_H_INCLUDED
-#define VIEW_H_INCLUDED
+#ifndef DASH__VIEW_H__INCLUDED
+#define DASH__VIEW_H__INCLUDED
 
 #include <dash/Cartesian.h>
+
+#include <dash/view/Sub.h>
+#include <dash/view/Local.h>
+#include <dash/view/Global.h>
+#include <dash/view/ViewMod.h>
+#include <dash/view/ViewTraits.h>
+
 
 namespace dash {
 
@@ -10,10 +17,10 @@ namespace dash {
  * cartesian coordinates.
  */
 template<
-  typename Iter,
-  unsigned int NumDimensions,
+  typename   Iter,
+  dim_t      NumDimensions,
   MemArrange Arrangement = ROW_MAJOR,
-  typename SizeType      = unsigned long long >
+  typename SizeType      = dash::default_size_t >
 class CartViewBase { 
 public: 
   typedef typename std::iterator_traits<Iter>::value_type value_type;
@@ -38,15 +45,15 @@ public:
     m_begin { container.begin() } {  
   }
 
-  SizeType rank() const {
+  constexpr SizeType rank() const {
     return m_cart.rank();
   }
 
-  SizeType size() const {
+  constexpr SizeType size() const {
     return m_cart.size();
   }
 
-  SizeType extent(unsigned int dim) const {
+  constexpr SizeType extent(dim_t dim) const {
     return m_cart.extent(dim);
   }
 
@@ -59,31 +66,34 @@ public:
 
   // x(), y(), z() accessors 
   // enabled only for the appropriate sizes
-  template<int U=NumDimensions>
-  typename std::enable_if<(U>0),SizeType>::type x(SizeType offs) const {
+  template<dim_t U=NumDimensions>
+  constexpr typename std::enable_if<(U>0),SizeType>::type
+  x(SizeType offs) const {
     return m_cart.x(offs);
   }
   
-  template<int U=NumDimensions>
-  typename std::enable_if<(U>1),SizeType>::type y(SizeType offs) const {
+  template<dim_t U=NumDimensions>
+  constexpr typename std::enable_if<(U>1),SizeType>::type
+  y(SizeType offs) const {
     return m_cart.y(offs);
   }
   
-  template<int U=NumDimensions>
-  typename std::enable_if<(U>2),SizeType>::type z(SizeType offs) const {
+  template<dim_t U=NumDimensions>
+  constexpr typename std::enable_if<(U>2),SizeType>::type
+  z(SizeType offs) const {
     return m_cart.z(offs);
   }
 
 };
 
-//
-// cartesian view class
-//
+/**
+ * Cartesian view class.
+ */
 template<
-  typename Iter,
-  unsigned int NumDimensions,
+  typename   Iter,
+  dim_t      NumDimensions,
   MemArrange Arrangement = ROW_MAJOR,
-  typename SizeType      = unsigned long long >
+  typename SizeType      = dash::default_size_t >
 struct CartView 
 : public CartViewBase<Iter, NumDimensions, Arrangement, SizeType> {
 public:
@@ -93,8 +103,7 @@ public:
     Args... args) 
   : CartViewBase<Iter, NumDimensions, Arrangement, SizeType>(
       it,
-      args...) {
-  }
+      args...) { }
 
   template<typename Container, typename... Args>
   CartView(
@@ -102,10 +111,9 @@ public:
     Args... args)
   : CartViewBase<Iter, NumDimensions, Arrangement, SizeType>(
       cont,
-      args...) {
-  }
+      args...) { }
 };
 
 } // namespace dash
 
-#endif //VIEW_H_INCLUDED
+#endif // DASH__VIEW_H__INCLUDED

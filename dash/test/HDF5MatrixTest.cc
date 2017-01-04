@@ -317,10 +317,12 @@ TEST_F(HDF5MatrixTest, UnderfilledPattern)
   dash::TeamSpec<2> teamspec_2d(team_size, 1);
   teamspec_2d.balance_extents();
 
-  auto block_size_x = 10;
-  auto block_size_y = 15;
+  auto block_size_x = 12;
+  auto block_size_y = 4;
   auto ext_x        = (block_size_x * teamspec_2d.num_units(0)) - 3;
   auto ext_y        = (block_size_y * teamspec_2d.num_units(1)) - 1;
+  
+  LOG_MESSAGE("Matrix extent (%i,%i)", ext_x, ext_y);
 
   auto size_spec    = dash::SizeSpec<2>(ext_x, ext_y);
 
@@ -341,7 +343,7 @@ TEST_F(HDF5MatrixTest, UnderfilledPattern)
     dash::Matrix<int, 2, index_t, pattern_t> matrix_a;
     matrix_a.allocate(pattern);
 
-    fill_matrix(matrix_a);
+    fill_matrix(matrix_a, 1);
 
     dio::OutputStream os(_filename);
     os << dio::dataset(_dataset)
@@ -353,7 +355,60 @@ TEST_F(HDF5MatrixTest, UnderfilledPattern)
   dio::InputStream is(_filename);
   is >> dio::dataset(_dataset)
      >> matrix_b;
+  
+  verify_matrix(matrix_b, 1);
 }
+
+#if 0
+// Currently not supported, as each unit must have at most
+// one underfilled block
+TEST_F(HDF5MatrixTest, UnderfilledPatMultiple)
+{
+  typedef dash::Pattern<2, dash::ROW_MAJOR> pattern_t;
+  typedef typename pattern_t::index_type    index_t;
+
+  size_t team_size  = dash::Team::All().size();
+
+  dash::TeamSpec<2> teamspec_2d(team_size, 1);
+  teamspec_2d.balance_extents();
+
+  auto block_size_x = 10;
+  auto block_size_y = 15;
+  auto ext_x        = (block_size_x * (teamspec_2d.num_units(0)+1)) - 3;
+  auto ext_y        = (block_size_y * (teamspec_2d.num_units(1)+1)) - 1;
+
+  auto size_spec    = dash::SizeSpec<2>(ext_x, ext_y);
+
+  // Create BlockPattern
+  const pattern_t pattern(
+    size_spec,
+    dash::DistributionSpec<2>(
+      dash::TILE(block_size_x),
+      dash::TILE(block_size_y)),
+    teamspec_2d,
+    dash::Team::All());
+
+  {
+    dash::Matrix<int, 2, index_t, pattern_t> matrix_a;
+    matrix_a.allocate(pattern);
+
+    fill_matrix(matrix_a);
+
+    dio::OutputStream os(_filename);
+    os << dio::dataset(_dataset)
+       << matrix_a;
+  }
+  dash::barrier();
+
+  // restore to simpler pattern 
+  dash::Matrix<int, 2, index_t, pattern_t> matrix_b(ext_x, ext_y);
+  dio::InputStream is(_filename);
+  is >> dio::dataset(_dataset)
+     >> matrix_b;
+  
+  verify_matrix(matrix_b);
+}
+#endif
 
 TEST_F(HDF5MatrixTest, MultipleDatasets)
 {
@@ -482,6 +537,93 @@ TEST_F(HDF5MatrixTest, GroupTest)
   verify_matrix(matrix_c, secret[2]);
 }
 #endif
+
+#if 0
+TEST_F(HDF5MatrixTest, DashView)
+{
+  int secret = 0;
+  dash::NArray<int,2> matrix2d(100,80);
+  fill_matrix(matrix2d, secret);
+  
+  {
+    auto output_view = dash::sub(0,5, matrix2d);
+    
+    // TODO: Does not work
+    dash::fill(dash::begin(output_view), dash::end(output_view), 5);
+
+    // Store View
+    dio::OutputStream os(_filename);
+    os << output_view;
+  }
+  
+  // Load data into a existing view
+  auto input_view = dash::sub(0,10, matrix2d);
+  dio::InputStream is(_filename);
+  is >> input_view;
+  
+  // Load data into new matrix
+  dash::Array<int> matrix1d;
+  is >> matrix1d;
+}
+#endif
+
+#if 0 // TODO: Implement and re-enable
+TEST_F(HDF5MatrixTest, HDFView)
+{
+  int secret = 0;
+  dash::NArray<int,3> matrix3d(10,8,5);
+  fill_matrix(matrix3d, secret);
+  
+  {
+    dio::OutputStream os(_filename);
+    os << matrix3d;
+  }
+  
+  // Load subset of data into new matrix
+  dash::NArray<int,3> sub_matrix3d;
+  auto position = std::array<size_t,3>({2,4,1}); // top left corner of desired block
+  auto extent   = std::array<size_t,3>({4,2,1}); // extents of block
+  dio::InputStream is(_filename);
+  is >> dash::block(position, extent)
+     >> sub_matrix3d;
+  
+  // post condition
+  // sub_matrix3d has extent {4,2,1}
+}
+
+TEST_F(HDF5MatrixTest, WriteCorresponding)
+{
+  int secret = 0;
+  dash::NArray<int,3> matrix3d(10,8,5);
+  fill_matrix(matrix3d, secret);
+  
+  {
+    dio::OutputStream os(_filename);
+    os << matrix3d;
+  }
+  
+  auto view = matrix3d.col(1);
+  // modify view
+  dash::fill(view.begin(), view.end(), 0);
+  
+  // write slice back
+  dio::OutputStream os(_filename, dio::DeviceMode::App);
+  is >> dio::modify_dataset()
+     >> dash::block(position, extent)
+     >> sub_matrix3d;
+  
+  // post condition
+  // slice in file is updated
+  dash::NArray<int,3> new_matrix3d(10,8,5);
+  
+  dio::InputStream is(_filename);
+  is << new_matrix3d;
+  
+  auto view = new_matrix3d.col(1);
+  dash::for_each(view.begin(), view.end(), [](int & el){ASSERT_EQ_U(0, el)});
+}
+
+#endif
 #if 0
 // Test Conversion between dash::Array and dash::Matrix
 // Currently not possible as matrix has to be at least
@@ -497,7 +639,7 @@ TEST_F(HDF5MatrixTest, ArrayToMatrix)
     }
 
     // Do not store pattern
-    auto fopts = dio::StoreHDF::get_default_options();
+    auto fopts = dio::StoreHDF::hdf5_options();
     fopts.store_pattern = false;
 
     dio::StoreHDF::write(array, _filename, _dataset);

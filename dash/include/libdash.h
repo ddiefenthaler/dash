@@ -22,15 +22,18 @@ namespace dash {
 #include <dash/Cartesian.h>
 #include <dash/TeamSpec.h>
 #include <dash/View.h>
+#include <dash/Range.h>
+
 #include <dash/GlobMem.h>
 #include <dash/GlobPtr.h>
 #include <dash/GlobRef.h>
 #include <dash/GlobAsyncRef.h>
 
-#include <dash/iterator/GlobIter.h>
-#include <dash/iterator/GlobViewIter.h>
+#include <dash/Iterator.h>
 
 #include <dash/Onesided.h>
+
+#include <dash/LaunchPolicy.h>
 
 #include <dash/Container.h>
 #include <dash/Shared.h>

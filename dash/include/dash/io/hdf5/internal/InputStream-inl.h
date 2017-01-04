@@ -13,43 +13,16 @@ namespace dash {
 namespace io {
 namespace hdf5 {
 
-// Array implementation
-template <
-    typename value_t,
-    typename index_t,
-    class    pattern_t >
+template < typename Container_t >
 inline InputStream & operator>> (
-    InputStream          & is,
-    dash::Array< value_t,
-                 index_t,
-                 pattern_t > & array) {
-
-    dash::io::hdf5::StoreHDF::read(
-        array,
-        is._filename,
-        is._dataset,
-        is._foptions);
-    return is;
-}
-
-// Matrix implementation
-template <
-    typename value_t,
-    dim_t    ndim,
-    typename index_t,
-    class    pattern_t >
-inline InputStream & operator>> (
-    InputStream           & is,
-    dash::Matrix< value_t,
-                  ndim,
-                  index_t,
-                  pattern_t > & matrix) {
-
-    dash::io::hdf5::StoreHDF::read(
-        matrix,
-        is._filename,
-        is._dataset,
-        is._foptions);
+    InputStream & is,
+    Container_t & container)
+{
+    if(is._launch_policy == dash::launch::async){
+      is._load_object_impl_async(container);
+    } else {
+      is._load_object_impl(container);
+    }
     return is;
 }
 
