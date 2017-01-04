@@ -359,7 +359,6 @@ TEST_F(HDF5MatrixTest, UnderfilledPattern)
   verify_matrix(matrix_b, 1);
 }
 
-#if 0
 // Currently not supported, as each unit must have at most
 // one underfilled block
 TEST_F(HDF5MatrixTest, UnderfilledPatMultiple)
@@ -388,6 +387,11 @@ TEST_F(HDF5MatrixTest, UnderfilledPatMultiple)
     teamspec_2d,
     dash::Team::All());
 
+  print_pattern(pattern,
+                "pat_HDF5MatrixTest.UnderfilledPatMultiple.svg",
+                "HDF5MatrixTest.UnderfilledPatMultiple");
+
+#if 0
   {
     dash::Matrix<int, 2, index_t, pattern_t> matrix_a;
     matrix_a.allocate(pattern);
@@ -400,15 +404,21 @@ TEST_F(HDF5MatrixTest, UnderfilledPatMultiple)
   }
   dash::barrier();
 
+#endif
   // restore to simpler pattern 
   dash::Matrix<int, 2, index_t, pattern_t> matrix_b(ext_x, ext_y);
+  print_pattern(matrix_b.pattern(),
+                "pat_HDF5MatrixTest.UnderfilledPatMultiple.svg",
+                "HDF5MatrixTest.UnderfilledPatMultiple");
+#if 0
+
   dio::InputStream is(_filename);
   is >> dio::dataset(_dataset)
      >> matrix_b;
   
   verify_matrix(matrix_b);
-}
 #endif
+}
 
 TEST_F(HDF5MatrixTest, MultipleDatasets)
 {
