@@ -408,8 +408,8 @@ TEST_F(HDF5MatrixTest, UnderfilledPatMultiple)
   // restore to simpler pattern 
   dash::Matrix<int, 2, index_t, pattern_t> matrix_b(ext_x, ext_y);
   print_pattern(matrix_b.pattern(),
-                "pat_HDF5MatrixTest.UnderfilledPatMultiple.svg",
-                "HDF5MatrixTest.UnderfilledPatMultiple");
+                "pat_HDF5MatrixTest.UnderfilledPatMultiple_simpler.svg",
+                "HDF5MatrixTest.UnderfilledPatMultiple_simpler");
 #if 0
 
   dio::InputStream is(_filename);
